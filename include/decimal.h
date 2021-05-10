@@ -1726,7 +1726,7 @@ bool fromStream(StreamType &input, const basic_decimal_format &format, decimal_t
             output = temp;
         }
     } else {
-        output = decimal_type(0);
+        throw std::runtime_error("failed to parse of a decimal from a string");
     }
     return result;
 }
