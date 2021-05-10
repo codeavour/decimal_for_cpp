@@ -1634,6 +1634,9 @@ namespace details {
                     ; // ignore the char
                 } else {
                     state = IN_END;
+                    if (c != StreamType::traits_type::eof()) {
+                        error = ERR_WRONG_CHAR;
+                    }
                 }
                 break;
             case IN_AFTER_DEC:
