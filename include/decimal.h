@@ -1644,8 +1644,11 @@ namespace details {
                         state = IN_END;
                 } else {
                     state = IN_END;
-                    if (digitsCount == 0) {
+                    if (afterDigitCount == 0) {
                         error = ERR_NO_DIGITS;
+                    } else if (digitsCount == 0) {
+                        before = 0;
+                        digitsCount = 1;
                     }
                 }
                 break;
