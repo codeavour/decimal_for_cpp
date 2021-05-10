@@ -1644,12 +1644,16 @@ namespace details {
                         state = IN_END;
                 } else {
                     state = IN_END;
-                    if (afterDigitCount == 0) {
-                        error = ERR_NO_DIGITS;
-                    } else if (digitsCount == 0) {
-                        before = 0;
-                        digitsCount = 1;
+                    if (c == StreamType::traits_type::eof()) {
+                        if (afterDigitCount == 0) {
+                            error = ERR_NO_DIGITS;
+                        } else if (digitsCount == 0) {
+                            before = 0;
+                            digitsCount = 1;
+                        }
                     }
+                    else
+                        error = ERR_WRONG_CHAR;
                 }
                 break;
             default:
