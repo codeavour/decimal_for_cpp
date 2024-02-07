@@ -1606,7 +1606,7 @@ namespace details {
                     digitsCount++;
                 } else if (c == dec_point) {
                     state = IN_AFTER_DEC;
-                } else if ((c != ' ') && (c != '\t')) {
+                } else {
                     state = IN_END;
                     error = ERR_WRONG_CHAR;
                 }
