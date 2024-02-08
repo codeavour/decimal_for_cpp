@@ -1120,11 +1120,11 @@ template<int Prec2>
         m_value = value;
     }
 
-    decimal<Prec> abs() const {
+    decimal<Prec, RoundPolicy> abs() const {
         if (m_value >= 0)
             return *this;
         else
-            return (decimal<Prec>(0) - *this);
+            return (decimal<Prec, RoundPolicy>(0) - *this);
     }
 
     /// returns value rounded to integer using active rounding policy
