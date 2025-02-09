@@ -1,0 +1,8 @@
+# CLion #
+#################
+/.idea/*
+!/.idea/runConfigurations
+
+# CMake #
+/cmake-build-debug
+/cmake-build-release
