@@ -1,17 +1,17 @@
 # About     
 Decimal data type support, for COBOL-like fixed-point operations on currency/money values.
 
-![decimal_for_cpp](https://github.com/vpiotr/decimal_for_cpp/workflows/decimal_for_cpp/badge.svg?branch=master)
+![decimal_for_cpp](https://github.com/vpiotr/decimal_for_cpp/actions/workflows/action.yml/badge.svg?branch=master)
 
 Author: Piotr Likus
 
 Created: 03/01/2011
 
-Modified: 30/11/2020
+Modified: 18/09/2024
 
 Licence: BSD
 
-Version: 1.17
+Version: 1.21
 
 
 This data type is designed to perform calculation with on-fly  roundings
@@ -137,6 +137,39 @@ In order to use one of these rounding modes you need to declare your decimal var
     
 and it will perform required rounding automatically - for example during assignment or arithmetic operations.    
 
+# Testing
+
+In order to test the library:
+
+    cd ~/tmp
+    git clone https://github.com/vpiotr/decimal_for_cpp.git
+    cd decimal_for_cpp
+    mkdir _build
+    cd _build
+    
+    # to create makefile with test support
+    cmake ..    
+    # or
+    cmake -DBUILD_TESTING=ON ..
+
+    # to create makefile without test support (and to avoid Boost unit testing)
+    cmake -DBUILD_TESTING=OFF ..
+    
+    # to build or install library (only required for testing)
+    make all
+    
+    # to execute all test runners 
+    make test
+    
+    # to execute specific runner
+    ./test_runner
+
+    # to list all test cases during runner execution
+    ./test_runner --log_level=test_suite
+
+    # to execute tests via ctest
+    ctest -v
+
 # Other information
 For more examples please see \test directory.
 
@@ -153,7 +186,7 @@ http://www.doxygen.org/
 Tested compilers:
 
 - VS2019 Community (MSVC++ 14.2)
-- gcc 9.3.0
+- gcc 11.4.0
 
 Uses C++11 by default, define DEC_NO_CPP11 symbol if your compiler does not support this standard.
 To use custom namespace, define DEC_NAMESPACE symbol which should contain your target namespace for decimal type.

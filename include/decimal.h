@@ -4,8 +4,8 @@
 //              operations on currency values.
 // Author:      Piotr Likus
 // Created:     03/01/2011
-// Last change: 23/09/2018
-// Version:     1.16
+// Last change: 18/04/2021
+// Version:     1.18
 // Licence:     BSD
 /////////////////////////////////////////////////////////////////////////////
 
@@ -35,6 +35,9 @@
 // - define DEC_CROSS_DOUBLE if you want to use double (instead of xdouble) for cross-conversions
 // - define DEC_EXTERNAL_LIMITS to define by yourself DEC_MAX_INT32
 // - define DEC_NO_CPP11 if your compiler does not support C++11
+// - define DEC_ALLOW_SPACESHIP_OPER as 1 if your compiler supports spaceship operator
+// - define DEC_TRIVIAL_DEFAULT_CONSTRUCTIBLE as 1 if you want to make default constructor trivial
+//   use with caution because default constructor will not initialize the object
 // - define DEC_TYPE_LEVEL as 0 for strong typing (same precision required for both arguments),
 //   as 1 for allowing to mix lower or equal precision types
 //   as 2 for automatic rounding when different precision is mixed
@@ -43,6 +46,7 @@
 #include <iomanip>
 #include <sstream>
 #include <locale>
+#include <cmath>
 
 #ifndef DEC_TYPE_LEVEL
 #define DEC_TYPE_LEVEL 2
@@ -65,7 +69,34 @@
 #else
 #include <stdint.h>
 #endif // defined
+
 #endif // DEC_NO_CPP11
+
+#ifdef DEC_NO_CPP11
+#define DEC_OVERRIDE
+#else
+#define DEC_OVERRIDE override
+#endif
+
+#ifdef DEC_NO_CPP11
+#define DEC_CONSTEXPR const
+#else
+#define DEC_CONSTEXPR constexpr
+#endif
+
+#ifdef DEC_NO_CPP11
+    #define DEC_MOVE(x) (x)
+#else
+    #include <utility>
+    #define DEC_MOVE(x) std::move(x)
+#endif
+
+#if (DEC_ALLOW_SPACESHIP_OPER == 1) && (__cplusplus > 201703L)
+#define DEC_USE_SPACESHIP_OPER 1
+#else
+#undef DEC_USE_SPACESHIP_OPER
+#define DEC_USE_SPACESHIP_OPER 0
+#endif
 
 // <--
 
@@ -90,6 +121,26 @@
 // <--
 
 namespace DEC_NAMESPACE {
+
+#ifdef DEC_NO_CPP11
+    template<bool Condition, class T>
+    struct enable_if_type {
+        typedef T type;
+    };
+
+    template<class T>
+    struct enable_if_type<false, T> {
+    };
+
+    template<bool condition, class T>
+    struct enable_if: public enable_if_type<condition, T> {
+    };
+
+#define ENABLE_IF dec::enable_if
+#else
+#define ENABLE_IF std::enable_if
+#endif
+
 
 // ----------------------------------------------------------------------------
 // Simple type definitions
@@ -137,6 +188,7 @@ typedef xdouble cross_float;
 // ----------------------------------------------------------------------------
 // Forward class definitions
 // ----------------------------------------------------------------------------
+class basic_decimal_format;
 
 // ----------------------------------------------------------------------------
 // Constants
@@ -149,27 +201,27 @@ enum {
 // Class definitions
 // ----------------------------------------------------------------------------
 template<int Prec> struct DecimalFactor {
-    static const int64 value = 10 * DecimalFactor<Prec - 1>::value;
+    static DEC_CONSTEXPR int64 value = 10 * DecimalFactor<Prec - 1>::value;
 };
 
 template<> struct DecimalFactor<0> {
-    static const int64 value = 1;
+    static DEC_CONSTEXPR int64 value = 1;
 };
 
 template<> struct DecimalFactor<1> {
-    static const int64 value = 10;
+    static DEC_CONSTEXPR int64 value = 10;
 };
 
 template<int Prec, bool positive> struct DecimalFactorDiff_impl {
-    static const int64 value = DecimalFactor<Prec>::value;
+    static DEC_CONSTEXPR int64 value = DecimalFactor<Prec>::value;
 };
 
 template<int Prec> struct DecimalFactorDiff_impl<Prec, false> {
-    static const int64 value = INT64_MIN;
+    static DEC_CONSTEXPR int64 value = INT64_MIN;
 };
 
 template<int Prec> struct DecimalFactorDiff {
-    static const int64 value = DecimalFactorDiff_impl<Prec, Prec >= 0>::value;
+    static DEC_CONSTEXPR int64 value = DecimalFactorDiff_impl<Prec, Prec >= 0>::value;
 };
 
 #ifndef DEC_EXTERNAL_ROUND
@@ -229,7 +281,30 @@ class dec_utils {
 public:
     // result = (value1 * value2) / divisor
     inline static int64 multDiv(const int64 value1, const int64 value2,
-            int64 divisor) {
+                                int64 divisor) {
+
+        if (value1 == 0 || value2 == 0) {
+            return 0;
+        }
+
+        if (divisor == 1) {
+            return value1 * value2;
+        }
+
+        if (value1 == 1) {
+            int64 result;
+            if (RoundPolicy::div_rounded(result, value2, divisor)) {
+                return result;
+            }
+        }
+
+        if (value2 == 1) {
+            int64 result;
+            if (RoundPolicy::div_rounded(result, value1, divisor)) {
+                return result;
+            }
+        }
+
         // we don't check for division by zero, the caller should - the next line will throw.
         const int64 value1int = value1 / divisor;
         int64 value1dec = value1 % divisor;
@@ -648,14 +723,23 @@ public:
     };
 
 #ifdef DEC_NO_CPP11
-    decimal() {
-        init(0);
-    }
+    #ifdef DEC_TRIVIAL_DEFAULT_CONSTRUCTIBLE
+        decimal() {
+        }
+    #else
+        decimal() {
+            init(0);
+        }
+    #endif
     decimal(const decimal &src) {
         init(src);
     }
 #else
-    decimal() noexcept : m_value(0) {}
+    #ifdef DEC_TRIVIAL_DEFAULT_CONSTRUCTIBLE
+        decimal() noexcept = default;
+    #else
+        decimal() noexcept : m_value(0) {}
+    #endif
     decimal(const decimal &src) = default;
 #endif
     explicit decimal(uint value) {
@@ -665,7 +749,7 @@ public:
         init(value);
     }
 #ifdef DEC_HANDLE_LONG
-    explicit decimal(long value) {
+    explicit decimal(long int value) {
         init(value);
     }
 #endif
@@ -686,6 +770,10 @@ public:
     }
     explicit decimal(const std::string &value) {
         fromString(value, *this);
+    }
+
+    explicit decimal(const std::string &value, const basic_decimal_format &format) {
+        fromString(value, format, *this);
     }
 
 #ifdef DEC_NO_CPP11
@@ -714,14 +802,14 @@ public:
 
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    typename std::enable_if<Prec >= Prec2, decimal>::type
-    & operator=(const decimal<Prec2> &rhs) {
+    typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    & operator=(const decimal<Prec2, RoundPolicy> &rhs) {
         m_value = rhs.getUnbiased() * DecimalFactorDiff<Prec - Prec2>::value;
         return *this;
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    decimal & operator=(const decimal<Prec2> &rhs) {
+    decimal & operator=(const decimal<Prec2, RoundPolicy> &rhs) {
         if (Prec2 > Prec) {
             RoundPolicy::div_rounded(m_value, rhs.getUnbiased(),
                     DecimalFactorDiff<Prec2 - Prec>::value);
@@ -759,6 +847,17 @@ public:
     }
 
     template <typename T>
+    bool operator!=(const T &rhs) const {
+        return !(*this == rhs);
+    }
+
+#if DEC_USE_SPACESHIP_OPER
+    template<typename T>
+    auto operator<=>(const T &rhs) const {
+        return (*this <=> static_cast<decimal>(rhs));
+    }
+#else
+    template <typename T>
     bool operator<(const T &rhs) const {
         return (*this < static_cast<decimal>(rhs));
     }
@@ -777,15 +876,21 @@ public:
     bool operator>=(const T &rhs) const {
         return (*this >= static_cast<decimal>(rhs));
     }
-
-    template <typename T>
-    bool operator!=(const T &rhs) const {
-        return !(*this == rhs);
-    }
+#endif
 
     bool operator==(const decimal &rhs) const {
         return (m_value == rhs.m_value);
     }
+
+    bool operator!=(const decimal &rhs) const {
+        return !(*this == rhs);
+    }
+
+#if DEC_USE_SPACESHIP_OPER
+    auto operator<=>(const decimal &rhs) const {
+        return m_value <=> rhs.m_value;
+    }
+#else
 
     bool operator<(const decimal &rhs) const {
         return (m_value < rhs.m_value);
@@ -802,10 +907,7 @@ public:
     bool operator>=(const decimal &rhs) const {
         return (m_value >= rhs.m_value);
     }
-
-    bool operator!=(const decimal &rhs) const {
-        return !(*this == rhs);
-    }
+#endif
 
     template <typename T>
     const decimal operator+(const T &rhs) const {
@@ -820,15 +922,15 @@ public:
 
 #if DEC_TYPE_LEVEL == 1
 template<int Prec2>
-    const typename std::enable_if<Prec >= Prec2, decimal>::type
-    operator+(const decimal<Prec2> &rhs) const {
+    const typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    operator+(const decimal<Prec2, RoundPolicy> &rhs) const {
         decimal result = *this;
         result.m_value += rhs.getUnbiased() * DecimalFactorDiff<Prec - Prec2>::value;
         return result;
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    const decimal operator+(const decimal<Prec2> &rhs) const {
+    const decimal operator+(const decimal<Prec2, RoundPolicy> &rhs) const {
         decimal result = *this;
         if (Prec2 > Prec) {
             int64 val;
@@ -857,14 +959,14 @@ template<int Prec2>
 
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    typename std::enable_if<Prec >= Prec2, decimal>::type
-    & operator+=(const decimal<Prec2> &rhs) {
+    typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    & operator+=(const decimal<Prec2, RoundPolicy> &rhs) {
         m_value += rhs.getUnbiased() * DecimalFactorDiff<Prec - Prec2>::value;
         return *this;
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    decimal & operator+=(const decimal<Prec2> &rhs) {
+    decimal & operator+=(const decimal<Prec2, RoundPolicy> &rhs) {
         if (Prec2 > Prec) {
             int64 val;
             RoundPolicy::div_rounded(val, rhs.getUnbiased(),
@@ -902,15 +1004,15 @@ template<int Prec2>
 
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    const typename std::enable_if<Prec >= Prec2, decimal>::type
-    operator-(const decimal<Prec2> &rhs) const {
+    const typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    operator-(const decimal<Prec2, RoundPolicy> &rhs) const {
         decimal result = *this;
         result.m_value -= rhs.getUnbiased() * DecimalFactorDiff<Prec - Prec2>::value;
         return result;
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    const decimal operator-(const decimal<Prec2> &rhs) const {
+    const decimal operator-(const decimal<Prec2, RoundPolicy> &rhs) const {
         decimal result = *this;
         if (Prec2 > Prec) {
             int64 val;
@@ -939,14 +1041,14 @@ template<int Prec2>
 
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    typename std::enable_if<Prec >= Prec2, decimal>::type
-    & operator-=(const decimal<Prec2> &rhs) {
+    typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    & operator-=(const decimal<Prec2, RoundPolicy> &rhs) {
         m_value -= rhs.getUnbiased() * DecimalFactorDiff<Prec - Prec2>::value;
         return *this;
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    decimal & operator-=(const decimal<Prec2> &rhs) {
+    decimal & operator-=(const decimal<Prec2, RoundPolicy> &rhs) {
         if (Prec2 > Prec) {
             int64 val;
             RoundPolicy::div_rounded(val, rhs.getUnbiased(),
@@ -975,8 +1077,8 @@ template<int Prec2>
 
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    const typename std::enable_if<Prec >= Prec2, decimal>::type
-    operator*(const decimal<Prec2>& rhs) const {
+    const typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    operator*(const decimal<Prec2, RoundPolicy>& rhs) const {
         decimal result = *this;
         result.m_value = dec_utils<RoundPolicy>::multDiv(result.m_value,
                 rhs.getUnbiased(), DecimalFactor<Prec2>::value);
@@ -984,7 +1086,7 @@ template<int Prec2>
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    const decimal operator*(const decimal<Prec2>& rhs) const {
+    const decimal operator*(const decimal<Prec2, RoundPolicy>& rhs) const {
         decimal result = *this;
         result.m_value = dec_utils<RoundPolicy>::multDiv(result.m_value,
                 rhs.getUnbiased(), DecimalFactor<Prec2>::value);
@@ -1006,15 +1108,15 @@ template<int Prec2>
 
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    typename std::enable_if<Prec >= Prec2, decimal>::type
-    & operator*=(const decimal<Prec2>& rhs) {
+    typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    & operator*=(const decimal<Prec2, RoundPolicy>& rhs) {
         m_value = dec_utils<RoundPolicy>::multDiv(m_value, rhs.getUnbiased(),
                 DecimalFactor<Prec2>::value);
         return *this;
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    decimal & operator*=(const decimal<Prec2>& rhs) {
+    decimal & operator*=(const decimal<Prec2, RoundPolicy>& rhs) {
         m_value = dec_utils<RoundPolicy>::multDiv(m_value, rhs.getUnbiased(),
                 DecimalFactor<Prec2>::value);
         return *this;
@@ -1037,8 +1139,8 @@ template<int Prec2>
 
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    const typename std::enable_if<Prec >= Prec2, decimal>::type
-    operator/(const decimal<Prec2>& rhs) const {
+    const typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    operator/(const decimal<Prec2, RoundPolicy>& rhs) const {
         decimal result = *this;
         result.m_value = dec_utils<RoundPolicy>::multDiv(result.m_value,
                 DecimalFactor<Prec2>::value, rhs.getUnbiased());
@@ -1046,7 +1148,7 @@ template<int Prec2>
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    const decimal operator/(const decimal<Prec2>& rhs) const {
+    const decimal operator/(const decimal<Prec2, RoundPolicy>& rhs) const {
         decimal result = *this;
         result.m_value = dec_utils<RoundPolicy>::multDiv(result.m_value,
                 DecimalFactor<Prec2>::value, rhs.getUnbiased());
@@ -1068,18 +1170,10 @@ template<int Prec2>
         return *this;
     }
 
-    /// Returns integer indicating sign of value
-    /// -1 if value is < 0
-    /// +1 if value is > 0
-    /// 0  if value is 0
-    int sign() const {
-        return (m_value > 0) ? 1 : ((m_value < 0) ? -1 : 0);
-    }
-
 #if DEC_TYPE_LEVEL == 1
     template<int Prec2>
-    typename std::enable_if<Prec >= Prec2, decimal>::type
-    & operator/=(const decimal<Prec2> &rhs) {
+    typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    & operator/=(const decimal<Prec2, RoundPolicy> &rhs) {
         m_value = dec_utils<RoundPolicy>::multDiv(m_value,
                 DecimalFactor<Prec2>::value, rhs.getUnbiased());
 
@@ -1087,13 +1181,95 @@ template<int Prec2>
     }
 #elif DEC_TYPE_LEVEL > 1
     template<int Prec2>
-    decimal & operator/=(const decimal<Prec2> &rhs) {
+    decimal & operator/=(const decimal<Prec2, RoundPolicy> &rhs) {
         m_value = dec_utils<RoundPolicy>::multDiv(m_value,
-                DecimalFactor<Prec2>::value, rhs.getUnbiased());
+                                                  DecimalFactor<Prec2>::value, rhs.getUnbiased());
 
         return *this;
     }
 #endif
+
+    template <typename T>
+    const decimal operator%(T n) const {
+        return *this % static_cast<decimal>(n);
+    }
+
+    template <typename T>
+    decimal & operator%=(T rhs) {
+        *this %= static_cast<decimal>(rhs);
+        return *this;
+    }
+
+    const decimal operator%(const decimal<Prec> &rhs) const {
+        int64 resultPayload;
+        resultPayload = this->m_value;
+        resultPayload %= rhs.m_value;
+        decimal<Prec> result;
+        result.m_value = resultPayload;
+        return result;
+    }
+
+    decimal & operator%=(const decimal<Prec> &rhs) {
+        int64 resultPayload;
+        resultPayload = this->m_value;
+        resultPayload %= rhs.m_value;
+        this->m_value = resultPayload;
+        return *this;
+    }
+
+#if DEC_TYPE_LEVEL >= 1
+    template<int Prec2>
+    typename ENABLE_IF<Prec >= Prec2, decimal>::type
+    operator%(const decimal<Prec2, RoundPolicy> &rhs) const {
+        int64 rhsInThisPrec = rhs.getUnbiased() * DecimalFactorDiff<Prec - Prec2>::value;
+        int64 resultPayload = this->m_value;
+        resultPayload %= rhsInThisPrec;
+        decimal<Prec> result;
+        result.m_value = resultPayload;
+        return result;
+    }
+
+    template<int Prec2>
+    typename ENABLE_IF<Prec >= Prec2, decimal &>::type
+    operator%=(const decimal<Prec2, RoundPolicy> &rhs) {
+        int64 rhsInThisPrec = rhs.getUnbiased() * DecimalFactorDiff<Prec - Prec2>::value;
+        int64 resultPayload = this->m_value;
+        resultPayload %= rhsInThisPrec;
+        this->m_value = resultPayload;
+        return *this;
+    }
+#endif
+
+#if DEC_TYPE_LEVEL > 1
+    template<int Prec2>
+    typename ENABLE_IF<Prec < Prec2, decimal>::type
+    operator%(const decimal<Prec2, RoundPolicy> &rhs) const {
+        int64 thisInRhsPrec = m_value * DecimalFactorDiff<Prec2 - Prec>::value;
+        int64 resultPayload = thisInRhsPrec % rhs.getUnbiased();
+        resultPayload /= DecimalFactorDiff<Prec2 - Prec>::value;
+        decimal<Prec> result;
+        result.m_value = resultPayload;
+        return result;
+    }
+
+    template<int Prec2>
+    typename ENABLE_IF<Prec < Prec2, decimal>::type
+    operator%=(const decimal<Prec2, RoundPolicy> &rhs) {
+        int64 thisInRhsPrec = m_value * DecimalFactorDiff<Prec2 - Prec>::value;
+        int64 resultPayload = thisInRhsPrec % rhs.getUnbiased();
+        resultPayload /= DecimalFactorDiff<Prec2 - Prec>::value;
+        this->m_value = resultPayload;
+        return *this;
+    }
+#endif
+
+    /// Returns integer indicating sign of value
+    /// -1 if value is < 0
+    /// +1 if value is > 0
+    /// 0  if value is 0
+    int sign() const {
+        return (m_value > 0) ? 1 : ((m_value < 0) ? -1 : 0);
+    }
 
     double getAsDouble() const {
         return static_cast<double>(m_value) / getPrecFactorDouble();
@@ -1125,6 +1301,45 @@ template<int Prec2>
             return *this;
         else
             return (decimal<Prec, RoundPolicy>(0) - *this);
+    }
+
+    decimal<Prec> trunc() const {
+        int64 beforeValue, afterValue;
+        afterValue = m_value % DecimalFactor<Prec>::value;
+        beforeValue = (m_value - afterValue);
+        decimal<Prec> result;
+        result.m_value = beforeValue;
+        return result;
+    }
+
+    decimal<Prec> floor() const {
+        int64 beforeValue, afterValue;
+        afterValue = m_value % DecimalFactor<Prec>::value;
+        beforeValue = (m_value - afterValue);
+
+        if (afterValue < 0) beforeValue -= DecimalFactor<Prec>::value;
+
+        decimal<Prec> result;
+        result.m_value = beforeValue;
+        return result;
+    }
+
+    decimal<Prec> ceil() const {
+        int64 beforeValue, afterValue;
+        afterValue = m_value % DecimalFactor<Prec>::value;
+        beforeValue = (m_value - afterValue);
+
+        if (afterValue > 0) beforeValue +=  DecimalFactor<Prec>::value;
+        decimal<Prec> result;
+        result.m_value = beforeValue;
+        return result;
+    }
+
+    decimal<Prec> round() const {
+        int64 resultPayload;
+        RoundPolicy::div_rounded(resultPayload, this->m_value, DecimalFactor<Prec>::value);
+        decimal<Prec> result(resultPayload);
+        return result;
     }
 
     /// returns value rounded to integer using active rounding policy
@@ -1241,7 +1456,7 @@ protected:
     }
 
 #ifdef DEC_HANDLE_LONG
-    void init(long value) {
+    void init(long int value) {
         m_value = DecimalFactor<Prec>::value * value;
     }
 #endif
@@ -1293,6 +1508,10 @@ protected:
             return -value;
         else
             return value;
+    }
+
+    static int sign(int64 value) {
+        return (value > 0) ? 1 : ((value < 0) ? -1 : 0);
     }
 protected:
     dec_storage_t m_value;
@@ -1460,19 +1679,19 @@ decimal<Prec, RoundPolicy> decimal_cast(const char (&arg)[N]) {
             return *this;
         }
 
-        char decimal_point() const override {
+        char decimal_point() const DEC_OVERRIDE {
             return m_decimal_point;
         }
 
-        char thousands_sep() const override {
+        char thousands_sep() const DEC_OVERRIDE {
             return m_thousands_sep;
         }
 
-        bool thousands_grouping() const override {
+        bool thousands_grouping() const DEC_OVERRIDE {
             return m_thousands_grouping;
         }
 
-        std::string grouping() const override {
+        std::string grouping() const DEC_OVERRIDE {
             return m_grouping;
         }
 
@@ -1495,7 +1714,7 @@ decimal<Prec, RoundPolicy> decimal_cast(const char (&arg)[N]) {
     };
 
     template<typename StreamType>
-    basic_decimal_format format_from_stream(StreamType &stream) {
+    decimal_format format_from_stream(StreamType &stream) {
         using namespace std;
         const numpunct<char> *facet =
                 has_facet<numpunct<char> >(stream.getloc()) ?
@@ -1516,7 +1735,7 @@ decimal<Prec, RoundPolicy> decimal_cast(const char (&arg)[N]) {
     /// bbbb is stream of digits before decimal point
     /// aaaa is stream of digits after decimal point
     template<class decimal_type, typename StreamType>
-    void toStream(const decimal_type &arg, const basic_decimal_format &format, StreamType &output) {
+    void toStream(const decimal_type &arg, const basic_decimal_format &format, StreamType &output, bool formatFromStream = false) {
         using namespace std;
 
         int64 before, after;
@@ -1539,8 +1758,8 @@ decimal<Prec, RoundPolicy> decimal_cast(const char (&arg)[N]) {
             output << "-";
         }
 
-        if (format.thousands_grouping() && format.change_thousands_if_needed()) {
-            std::locale oldloc = output.getloc();
+        std::locale oldloc = output.getloc();
+        if (!formatFromStream || (format.thousands_grouping() && format.change_thousands_if_needed())) {
             output.imbue( std::locale( std::locale::classic(), new decimal_format_punct(format) ) );
             output << before;
             output.imbue(oldloc);
@@ -1549,15 +1768,17 @@ decimal<Prec, RoundPolicy> decimal_cast(const char (&arg)[N]) {
         }
 
         if (arg.getDecimalPoints() > 0) {
+            output.imbue(std::locale::classic());
             output << format.decimal_point();
             output << setw(arg.getDecimalPoints()) << setfill('0') << right
                    << after;
+            output.imbue(oldloc);
         }
     }
 
     template<class decimal_type, typename StreamType>
     void toStream(const decimal_type &arg, StreamType &output) {
-        toStream(arg, format_from_stream(output), output);
+        toStream(arg, format_from_stream(output), output, true);
     }
 
 namespace details {
@@ -1760,7 +1981,7 @@ bool fromStream(StreamType &input, const basic_decimal_format &format, decimal_t
 
         ostringstream out;
         toStream(arg, format, out);
-        output = out.str();
+        output = DEC_MOVE(out.str());
         return output;
     }
 
@@ -1771,7 +1992,7 @@ bool fromStream(StreamType &input, const basic_decimal_format &format, decimal_t
 
         ostringstream out;
         toStream(arg, out);
-        output = out.str();
+        output = DEC_MOVE(out.str());
         return output;
     }
 

@@ -14,12 +14,20 @@
 extern int putenv(char*);
 #endif
 
-
 #define BOOST_TEST_MAIN
 #define BOOST_TEST_MODULE "C++ Unit Tests for decimal"
 #include <boost/test/included/unit_test.hpp>
+using namespace boost::unit_test;
 
-BOOST_AUTO_TEST_SUITE ( test )
-#include "decimalTest.ipp"
-//#include "decimalTestIo.ipp"
-BOOST_AUTO_TEST_SUITE_END( )
+#include "decimal.h"
+
+BOOST_AUTO_TEST_CASE(decimalBasicTest) {
+    using namespace dec;
+    using namespace std;
+
+    decimal<2> value1(143125);
+    decimal<2> value2("143125");
+
+    BOOST_CHECK_EQUAL(value1, value2);
+}
+
