@@ -1614,6 +1614,7 @@ namespace details {
                 break;
             case IN_BEFORE_FIRST_DIG:
                 if ((c >= '0') && (c <= '9')) {
+                    // @todo: check if there's room in "before" for the new digit
                     before = 10 * before + static_cast<int>(c - '0');
                     state = IN_BEFORE_DEC;
                     digitsCount++;
@@ -1626,6 +1627,7 @@ namespace details {
                 break;
             case IN_BEFORE_DEC:
                 if ((c >= '0') && (c <= '9')) {
+                    // @todo: check if there's room in "before" for the new digit
                     before = 10 * before + static_cast<int>(c - '0');
                     digitsCount++;
                 } else if (c == dec_point) {
@@ -1641,6 +1643,7 @@ namespace details {
                 break;
             case IN_AFTER_DEC:
                 if ((c >= '0') && (c <= '9')) {
+                    // @todo: check if there's room in "after" for the new digit
                     after = 10 * after + static_cast<int>(c - '0');
                     afterDigitCount++;
                     if (afterDigitCount >= DEC_NAMESPACE::max_decimal_points)
@@ -1691,6 +1694,45 @@ namespace details {
 ;
 // namespace
 
+inline void validate1(int64 before, int64 after, int afterDigits, const int decimalPoints)
+{
+    if (abs(before) > 922337203685)
+        throw std::overflow_error("number does not fit");
+    else if (abs(before) == 922337203685)
+    {
+        int corrCnt = decimalPoints - afterDigits;
+        auto correctedAfter = after;
+        while (corrCnt > 0)
+        {
+            correctedAfter *= 10;
+            --corrCnt;
+        }
+
+        if (correctedAfter < -4775808 || correctedAfter > 4775807)
+            throw std::overflow_error("number does not fit");
+    }
+}
+
+inline bool areSameSign(const int64 a, const int64 b)
+{
+    return a > 0 == b > 0;
+}
+
+inline void validate2(const int sign, const int64 after)
+{
+    if (after != 0 && sign == 1 != after >= 0)
+        throw std::overflow_error("number does not fit");
+}
+
+template<typename T>
+T checkForOverflow(const T original, const T result)
+{
+    if (areSameSign(original, result))
+        return result;
+
+    throw std::overflow_error("number does not fit");
+}
+
 /// Converts stream of chars to decimal
 /// Handles the following formats ('.' is selected from locale info):
 /// \code
@@ -1715,26 +1757,33 @@ bool fromStream(StreamType &input, const basic_decimal_format &format, decimal_t
     bool result = details::parse_unpacked(input, format, sign, before, after,
             afterDigits);
     if (result) {
+        //validate1(before, after, afterDigits, decimal_type::decimal_points);
+
         if (afterDigits <= decimal_type::decimal_points) {
             // direct mode
             int corrCnt = decimal_type::decimal_points - afterDigits;
             while (corrCnt > 0) {
+                // @todo: this need to use checkForOverflow() too, what test needs writing?
+                //after = checkForOverflow(after, after * 10);
                 after *= 10;
                 --corrCnt;
             }
+
             output.pack(before, after);
         } else {
             // rounding mode
             int corrCnt = afterDigits;
             int64 decimalFactor = 1;
             while (corrCnt > 0) {
-                before *= 10;
+                before = checkForOverflow(before, before * 10);
                 decimalFactor *= 10;
                 --corrCnt;
             }
             decimal_type temp(before + after, decimalFactor);
             output = temp;
         }
+
+        validate2(sign, output.getUnbiased());
     } else {
         throw std::invalid_argument("string input does not parse into a decimal");
     }
