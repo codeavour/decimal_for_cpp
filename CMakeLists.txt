@@ -2,6 +2,8 @@ cmake_minimum_required(VERSION 3.12)
 project(decimal_for_cpp)
 include(CTest)
 
+cmake_policy(SET CMP0167 NEW)
+
 set(Boost_USE_STATIC_LIBS OFF)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
