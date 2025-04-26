@@ -65,16 +65,16 @@ include(CMakePackageConfigHelpers)
 configure_package_config_file(
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/decimal_for_cppConfig.cmake.in"
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/decimal_for_cppConfig.cmake"
-        INSTALL_DESTINATION lib/decimal_for_cpp/cmake
+        INSTALL_DESTINATION lib/cmake/decimal_for_cpp
 )
 
 install(FILES
         "${CMAKE_CURRENT_SOURCE_DIR}/cmake/decimal_for_cppConfig.cmake"
 #        "${CMAKE_CURRENT_SOURCE_DIR}/cmake/decimal_for_cppConfigVersion.cmake"
-        DESTINATION lib/decimal_for_cpp/cmake
+        DESTINATION lib/cmake/decimal_for_cpp
 )
 
 install(EXPORT decimal_for_cppTargets
         NAMESPACE decimal_for_cpp::
-        DESTINATION lib/decimal_for_cpp/cmake
+        DESTINATION lib/cmake/decimal_for_cpp
 )
