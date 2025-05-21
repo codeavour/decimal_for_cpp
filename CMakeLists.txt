@@ -7,7 +7,7 @@ cmake_policy(SET CMP0167 NEW)
 
 #set(PROJECT_VERSION 3.4.1)
 
-set(Boost_USE_STATIC_LIBS OFF)
+set(Boost_USE_STATIC_LIBS ON)
 set(Boost_USE_MULTITHREADED ON)
 set(Boost_USE_STATIC_RUNTIME OFF)
 
