@@ -6,3 +6,5 @@
 # CMake #
 /cmake-build-debug
 /cmake-build-release
+/cmake-superbuild-debug
+/cmake-superbuild-release
