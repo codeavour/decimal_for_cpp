@@ -16,12 +16,11 @@ ExternalProject_Add(boost
 )
 
 ExternalProject_Add(decimal_for_cpp
-        GIT_REPOSITORY https://github.com/codeavour/decimal_for_cpp.git
-        GIT_TAG HEAD
+        SOURCE_DIR ${CMAKE_SOURCE_DIR}/..
         DEPENDS boost
         CMAKE_ARGS
+            -DCMAKE_INSTALL_PREFIX=<INSTALL_DIR>
             -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-            -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/install
         LOG_DOWNLOAD ON
         LOG_CONFIGURE ON
         LOG_BUILD ON
