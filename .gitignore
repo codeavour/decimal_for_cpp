@@ -1,10 +1,15 @@
-# CLion #
-#################
-/.idea/*
-!/.idea/runConfigurations
+!*cmake.in
+*.cmake
 
-# CMake #
+Testing/
+install/
+
 /cmake-build-debug
 /cmake-build-release
 /cmake-superbuild-debug
 /cmake-superbuild-release
+
+# CLion #
+#################
+/.idea/*
+!/.idea/runConfigurations
